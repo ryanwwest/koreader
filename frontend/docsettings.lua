@@ -154,6 +154,70 @@ function DocSettings:getFileFromHistory(hist_name)
     end
 end
 
+
+-- TODO copied from main.lua, relocate that plugin code to common place and use instead
+function DocSettings:partialMd5(file)
+    if file == nil then
+        return nil
+    end
+    local bit = require("bit")
+    local md5 = require("ffi/sha2").md5
+    local lshift = bit.lshift
+    local step, size = 1024, 1024
+    local update = md5()
+    local file_handle = io.open(file, 'rb')
+    for i = -1, 10 do
+        file_handle:seek("set", lshift(step, 2*i))
+        local sample = file_handle:read(size)
+        if sample then
+            update(sample)
+        else
+            break
+        end
+    end
+    file_handle:close()
+    return update()
+end
+
+function DocSettings:getSidecarHashFile(doc_path)
+    if not pdf then pdf = require("ffi/mupdf") end  -- maybe better elsewhere
+    local idk = pdf.getPdfTrailer(doc_path)
+    logger.warn("DocSettings: Trailer", idk, "should be trailer data")
+    -- output should be something like this from `mutool show`:
+    -- trailer
+-- <<
+-- /DecodeParms <<
+--   /Columns 5
+--   /Predictor 11
+-- >>
+-- /Filter /FlateDecode
+-- /ID [ <C3872330F3484ED0A90A8F3C1B023878> <C263760BB203AB548366F212401D3BAC> ]
+-- /Index [ 23190 144 ]
+-- /Info 23189 0 R
+-- /Length 345
+-- /Prev 25176808
+-- /Root 24191 0 R
+-- /Size 24334
+-- /Type /XRef
+-- /W [ 1 3 1 ]
+-- >>
+
+
+    local new = DocSettings:extend{}
+    --local partial_md5 = new.partialMd5(doc_path)
+    local hash_dir = "docsettings/"  -- same as "dir" option storage path
+    --local hash_file = new.doc_sidecar_dir.."/"..ffiutil.basename(doc_path)..".lua"
+    return --
+
+    -- Example hash: 839136353a953a538b122b297bb2fe92
+    -- TODO check if either docsettings dir or file exists based on 839136353a953a538b122b297bb2fe92.sdr/ and verify within 839136353a953a538b122b297bb2fe92.filetype.lua.
+
+    -- if exists, check filetype compatibility. If wrong, warning but return it? mirror choice in other logic
+
+    -- future TODO, could this also rely on author or title as fallback identifications if hash changes/not found? But can't slow down things for every unidentified hash
+end
+
+
 --- Opens a document's individual settings (font, margin, dictionary, etc.)
 -- @string doc_path path to the document (e.g., `/foo/bar.pdf`)
 -- @treturn DocSettings object
@@ -176,6 +240,9 @@ function DocSettings:open(doc_path)
     end
     local history_file = new:getHistoryPath(doc_path)
 
+    -- new.hash_sidecar_file TODO?
+    local hash_sidecar_file = new:getSidecarHashFile(doc_path)
+
     -- Candidates list, in order of priority:
     local candidates_list = {
         -- New sidecar file in doc folder
@@ -188,6 +255,10 @@ function DocSettings:open(doc_path)
         dir_sidecar_file or "",
         -- Backup file of new sidecar file in docsettings folder
         dir_sidecar_file and (dir_sidecar_file..".old") or "",
+        -- Hash or PDF fingerprint-based sidecar file lookup
+        hash_sidecar_file or "",
+        -- Backup file of hash or PDF fingerprint-based sidecar file lookup
+        hash_sidecar_file and (hash_sidecar_file..".old") or "",
         -- Legacy history folder
         history_file,
         -- Backup file in legacy history folder
